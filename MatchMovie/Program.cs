@@ -11,6 +11,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddCorsConfiguration();
 builder.Services.AddRedisConfiguration(builder.Configuration);
 builder.Services.AddSignalRConfiguration();
 
@@ -24,7 +25,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
+app.UseCors();
+app.UseRouting();
 app.UseHttpsRedirection();
 app.UseAuthorization();
 

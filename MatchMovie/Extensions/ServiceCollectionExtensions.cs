@@ -38,4 +38,21 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    public static IServiceCollection AddCorsConfiguration(
+        this IServiceCollection services)
+    {
+        services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(builder =>
+            {
+                builder.SetIsOriginAllowed(_ => true) 
+                       .AllowAnyHeader()
+                       .AllowAnyMethod()
+                       .AllowCredentials(); 
+            });
+        });
+
+        return services;
+    }
 }
