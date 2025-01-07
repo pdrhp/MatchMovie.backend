@@ -7,11 +7,14 @@ public class Room
     public RoomSettings Settings { get; set; } = new();
     public List<string> ParticipantsConnectionIds { get; set; } = new();
     public RoomStatus Status { get; set; } = RoomStatus.WaitingToStart;
+    public List<Movie> Movies { get; set; } = new();
+    public Dictionary<string, List<int>> ParticipantVotes { get; set; } = new();
 }
 
 public enum RoomStatus
 {
     WaitingToStart,
     InProgress,
+    LoadingMovies,
     Finished
 }

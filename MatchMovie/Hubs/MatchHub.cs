@@ -119,6 +119,8 @@ public class MatchHub : Hub
                 IsHost = room.HostConnectionId == Context.ConnectionId
             });
 
+            await Clients.Caller.SendAsync("RoomJoined", room);
+            
             _logger.LogInformation("User {ConnectionId} joined room: {RoomCode}", 
                 Context.ConnectionId, roomCode);
         }
@@ -149,7 +151,7 @@ public class MatchHub : Hub
             room.Status = RoomStatus.InProgress;
             await _connections.UpdateRoom(room);
 
-            await Clients.Group(roomCode).SendAsync("MatchingStarted");
+            await Clients.Group(roomCode).SendAsync("MatchingStarted", room);
             
             _logger.LogInformation("Matching started in room: {RoomCode}", roomCode);
         }
@@ -207,5 +209,29 @@ public class MatchHub : Hub
             _logger.LogError(ex, "Error configuring room {RoomCode}", roomCode);
             await Clients.Caller.SendAsync("Error", "Erro ao configurar sala");
         }
+    }
+    
+    public async Task AddMoviesToRoom(string roomCode, List<Movie> movies)
+    {
+        var room = await _connections.GetRoom(roomCode);
+        if (room == null)
+        {
+            await Clients.Caller.SendAsync("Error", "Sala não encontrada");
+            return;
+        }
+
+        if (Context.ConnectionId != room.HostConnectionId)
+        {
+            await Clients.Caller.SendAsync("Error", "Apenas o host pode adicionar filmes");
+            return;
+        }
+
+        room.Movies = movies;
+        room.Status = RoomStatus.LoadingMovies;
+        await _connections.UpdateRoom(room);
+        
+        _logger.LogInformation("Movies added to room {RoomCode}", roomCode);
+
+        await Clients.Group(roomCode).SendAsync("MoviesLoading", movies.Count);
     }
 }
