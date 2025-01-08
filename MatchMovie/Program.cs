@@ -15,6 +15,8 @@ builder.Services.AddCorsConfiguration();
 builder.Services.AddRedisConfiguration(builder.Configuration);
 builder.Services.AddSignalRConfiguration();
 
+builder.Services.AddCustomHealthChecks(builder.Configuration);
+
 builder.Services.AddSingleton<IConnectionMapping, RedisConnectionMapping>();
 
 
@@ -29,8 +31,10 @@ app.UseCors();
 app.UseRouting();
 app.UseHttpsRedirection();
 app.UseAuthorization();
-
 app.MapControllers();
+
+app.UseCustomHealthChecks();
+
 app.MapHub<MatchHub>("/matchhub");
 
 app.Run();
