@@ -9,6 +9,7 @@ public class Room
     public RoomStatus Status { get; set; } = RoomStatus.WaitingToStart;
     public List<Movie> Movies { get; set; } = new();
     public Dictionary<string, List<int>> ParticipantVotes { get; set; } = new();
+    public Dictionary<string, string> ParticipantNames { get; set; } = new();
 }
 
 public enum RoomStatus
