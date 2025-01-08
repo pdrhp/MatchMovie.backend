@@ -10,18 +10,34 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        var redisUrl = configuration.GetSection("Redis").GetValue<string>("InternalUrl");
+        var redisUri = new Uri(redisUrl);
+
+        var host = redisUri.Host;
+        var port = redisUri.Port;
+        var connectionString = string.Empty;
+
+        if (!string.IsNullOrEmpty(redisUri.UserInfo))
+        {
+            var password = redisUri.UserInfo.Split(':')[1];
+            connectionString = $"{host}:{port},password={password},ssl=false,abortConnect=false";
+        }
+        else
+        {
+            connectionString = $"{host}:{port},ssl=false,abortConnect=false";
+        }
+
         services.Configure<RedisConfig>(
             configuration.GetSection("Redis"));
 
         services.AddStackExchangeRedisCache(options =>
         {
-            options.Configuration = configuration.GetConnectionString("Redis");
+            options.Configuration = connectionString;
         });
 
         services.AddSingleton<IConnectionMultiplexer>(sp =>
         {
-            var config = sp.GetRequiredService<IOptions<RedisConfig>>();
-            return ConnectionMultiplexer.Connect(config.Value.ConnectionString);
+            return ConnectionMultiplexer.Connect(connectionString);
         });
 
         return services;
@@ -46,10 +62,10 @@ public static class ServiceCollectionExtensions
         {
             options.AddDefaultPolicy(builder =>
             {
-                builder.SetIsOriginAllowed(_ => true) 
+                builder.SetIsOriginAllowed(_ => true)
                        .AllowAnyHeader()
                        .AllowAnyMethod()
-                       .AllowCredentials(); 
+                       .AllowCredentials();
             });
         });
 
