@@ -1,23 +1,33 @@
-﻿FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-USER $APP_UID
-WORKDIR /app
-EXPOSE 8080
-EXPOSE 8081
-
+﻿# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["MatchMovie/MatchMovie.csproj", "MatchMovie/"]
-RUN dotnet restore "MatchMovie/MatchMovie.csproj"
+
+# Copiar os arquivos do projeto
+COPY ["MatchMovie.csproj", "./"]
+RUN dotnet restore
+
+# Copiar todo o código fonte
 COPY . .
-WORKDIR "/src/MatchMovie"
-RUN dotnet build "MatchMovie.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build -c Release -o /app/build
+RUN dotnet publish -c Release -o /app/publish
 
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "MatchMovie.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
-
-FROM base AS final
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
+
+# Configurar variáveis de ambiente do Redis
+ENV Redis__ConnectionString=localhost:6379
+ENV Redis__InternalUrl=redis://localhost:6379
+ENV Redis__DatabaseId=0
+ENV Redis__DefaultExpirationInHours=1
+
+# Configurar variáveis de ambiente da aplicação
+ENV ASPNETCORE_URLS=http://+:80
+ENV ASPNETCORE_ENVIRONMENT=Production
+
+# Expor a porta 80
+EXPOSE 80
+
+# Iniciar a aplicação
 ENTRYPOINT ["dotnet", "MatchMovie.dll"]
