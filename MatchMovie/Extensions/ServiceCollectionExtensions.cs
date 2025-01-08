@@ -1,6 +1,7 @@
 ﻿using MatchMovie.Configuration;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using Microsoft.Extensions.Logging;
 
 namespace MatchMovie.Controllers;
 
@@ -10,6 +11,8 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        var logger = services.BuildServiceProvider().GetRequiredService<ILogger<IServiceCollection>>();
+        
         var redisUrl = configuration.GetSection("Redis").GetValue<string>("InternalUrl");
         var redisUri = new Uri(redisUrl);
 
@@ -17,14 +20,19 @@ public static class ServiceCollectionExtensions
         var port = redisUri.Port;
         var connectionString = string.Empty;
 
+        logger.LogInformation("Configurando Redis com URI: {RedisUri}", redisUri);
+        logger.LogInformation("Host: {Host}, Port: {Port}", host, port);
+
         if (!string.IsNullOrEmpty(redisUri.UserInfo))
         {
             var password = redisUri.UserInfo.Split(':')[1];
             connectionString = $"{host}:{port},password={password},ssl=false,abortConnect=false";
+            logger.LogInformation("Redis configurado com autenticação");
         }
         else
         {
             connectionString = $"{host}:{port},ssl=false,abortConnect=false";
+            logger.LogInformation("Redis configurado sem autenticação");
         }
 
         services.Configure<RedisConfig>(
@@ -37,9 +45,12 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IConnectionMultiplexer>(sp =>
         {
+            logger.LogInformation("Iniciando conexão com Redis: {ConnectionString}", 
+                connectionString.Replace(redisUri.UserInfo, "***")); // Oculta credenciais no log
             return ConnectionMultiplexer.Connect(connectionString);
         });
 
+        logger.LogInformation("Configuração do Redis concluída");
         return services;
     }
 
