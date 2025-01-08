@@ -36,11 +36,13 @@ public class MatchHub : Hub
                 else if (room.ParticipantsConnectionIds.Contains(Context.ConnectionId))
                 {
                     room.ParticipantsConnectionIds.Remove(Context.ConnectionId);
+                    room.ParticipantNames.Remove(Context.ConnectionId);
                     await _connections.UpdateRoom(room);
                 
                     await Clients.Group(roomCode).SendAsync("ParticipantLeft", new
                     {
-                        ParticipantCount = room.ParticipantsConnectionIds.Count
+                        ParticipantCount = room.ParticipantsConnectionIds.Count,
+                        ParticipantNames = room.ParticipantNames
                     });
                 
                     _logger.LogInformation("Participant left room {RoomCode}", roomCode);
@@ -59,27 +61,35 @@ public class MatchHub : Hub
         }
     }
 
-    public async Task CreateRoom()
+    public async Task CreateRoom(string userName)
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(userName))
+            {
+                await Clients.Caller.SendAsync("Error", "Nome do usuário é obrigatório");
+                return;
+            }
+
             var room = new Room 
             { 
                 HostConnectionId = Context.ConnectionId,
                 Code = Guid.NewGuid().ToString("N")[..6].ToUpper()
             };
 
+            room.ParticipantNames[Context.ConnectionId] = userName;
             await _connections.AddRoom(room);
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
             
             await Clients.Caller.SendAsync("RoomCreated", new
             {
                 room.Code,
-                IsHost = true
+                IsHost = true,
+                UserName = userName
             });
 
-            _logger.LogInformation("Room created: {RoomCode} by {ConnectionId}", 
-                room.Code, Context.ConnectionId);
+            _logger.LogInformation("Room created: {RoomCode} by {UserName} ({ConnectionId})", 
+                room.Code, userName, Context.ConnectionId);
         }
         catch (Exception ex)
         {
@@ -88,10 +98,16 @@ public class MatchHub : Hub
         }
     }
 
-    public async Task JoinRoom(string roomCode)
+    public async Task JoinRoom(string roomCode, string userName)
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(userName))
+            {
+                await Clients.Caller.SendAsync("Error", "Nome do usuário é obrigatório");
+                return;
+            }
+
             var room = await _connections.GetRoom(roomCode);
             if (room == null)
             {
@@ -108,6 +124,7 @@ public class MatchHub : Hub
             if (!room.ParticipantsConnectionIds.Contains(Context.ConnectionId))
             {
                 room.ParticipantsConnectionIds.Add(Context.ConnectionId);
+                room.ParticipantNames[Context.ConnectionId] = userName;
                 await _connections.UpdateRoom(room);
             }
 
@@ -116,18 +133,71 @@ public class MatchHub : Hub
             await Clients.Group(roomCode).SendAsync("ParticipantJoined", new
             {
                 ParticipantCount = room.ParticipantsConnectionIds.Count,
-                IsHost = room.HostConnectionId == Context.ConnectionId
+                IsHost = room.HostConnectionId == Context.ConnectionId,
+                UserName = userName,
+                ParticipantNames = room.ParticipantNames
             });
 
             await Clients.Caller.SendAsync("RoomJoined", room);
             
-            _logger.LogInformation("User {ConnectionId} joined room: {RoomCode}", 
-                Context.ConnectionId, roomCode);
+            _logger.LogInformation("User {UserName} ({ConnectionId}) joined room: {RoomCode}", 
+                userName, Context.ConnectionId, roomCode);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error joining room {RoomCode}", roomCode);
             await Clients.Caller.SendAsync("Error", "Erro ao entrar na sala");
+        }
+    }
+
+    public async Task VoteMovie(string roomCode, int movieId)
+    {
+        try
+        {
+            var room = await _connections.GetRoom(roomCode);
+            if (room == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Sala não encontrada");
+                return;
+            }
+            
+            if (room.Status != RoomStatus.InProgress)
+            {
+                await Clients.Caller.SendAsync("Error", "Votação encerrada");
+                return;
+            }
+
+            if (!room.Movies.Any(m => m.Id == movieId))
+            {
+                await Clients.Caller.SendAsync("Error", "Filme não encontrado");
+                return;
+            }
+
+            if (!room.ParticipantVotes.ContainsKey(Context.ConnectionId))
+            {
+                room.ParticipantVotes[Context.ConnectionId] = new List<int>();
+            }
+
+            if (!room.ParticipantVotes[Context.ConnectionId].Contains(movieId))
+            {
+                room.ParticipantVotes[Context.ConnectionId].Add(movieId);
+                await _connections.UpdateRoom(room);
+                
+                await Clients.Group(roomCode).SendAsync("MovieVoted", new
+                {
+                    ParticipantId = Context.ConnectionId,
+                    MovieId = movieId,
+                    ParticipantsVotes = room.ParticipantVotes
+                });
+                
+                _logger.LogInformation("User {ConnectionId} voted for movie {MovieId} in room {RoomCode}", 
+                    Context.ConnectionId, movieId, roomCode);
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error voting movie in room {RoomCode}", roomCode);
+            await Clients.Caller.SendAsync("Error", "Erro ao votar no filme");
         }
     }
 
@@ -161,6 +231,9 @@ public class MatchHub : Hub
             await Clients.Caller.SendAsync("Error", "Erro ao iniciar matching");
         }
     }
+
+
+    
     
     public async Task ConfigureRoom(string roomCode, RoomSettings settings)
     {
@@ -179,9 +252,9 @@ public class MatchHub : Hub
                 return;
             }
 
-            if (settings.RoundDurationInMinutes is < 1 or > 5)
+            if (settings.RoundDurationInSeconds is < 30 or > 300)
             {
-                await Clients.Caller.SendAsync("Error", "Duração da rodada deve ser entre 1 e 5 minutos");
+                await Clients.Caller.SendAsync("Error", "Duração da rodada deve ser entre 10 segundos e 200 segundos");
                 return;
             }
 
@@ -197,12 +270,12 @@ public class MatchHub : Hub
             await Clients.Group(roomCode).SendAsync("RoomConfigured", new
             {
                 settings.Categories,
-                settings.RoundDurationInMinutes,
+                settings.RoundDurationInSeconds,
                 settings.MaxParticipants
             });
 
-            _logger.LogInformation("Room {RoomCode} configured with {Categories} categories and {Duration}min duration", 
-                roomCode, settings.Categories.Count, settings.RoundDurationInMinutes);
+            _logger.LogInformation("Room {RoomCode} configured with {Categories} categories and {Duration}s duration", 
+                roomCode, settings.Categories.Count, settings.RoundDurationInSeconds);
         }
         catch (Exception ex)
         {
@@ -233,5 +306,53 @@ public class MatchHub : Hub
         _logger.LogInformation("Movies added to room {RoomCode}", roomCode);
 
         await Clients.Group(roomCode).SendAsync("MoviesLoading", movies.Count);
+    }
+
+    public async Task FinishRoom(string roomCode)
+    {
+        try
+        {
+            var room = await _connections.GetRoom(roomCode);
+            if (room == null)
+            {
+                await Clients.Caller.SendAsync("Error", "Sala não encontrada");
+                return;
+            }
+
+            if (Context.ConnectionId != room.HostConnectionId)
+            {
+                await Clients.Caller.SendAsync("Error", "Apenas o host pode encerrar a sala");
+                return;
+            }
+
+            if (room.Status != RoomStatus.InProgress)
+            {
+                return;
+            }
+
+            room.Status = RoomStatus.Finished;
+            await _connections.UpdateRoom(room);
+
+            var movieVotes = room.Movies.Select(movie => new
+            {
+                Movie = movie,
+                VoteCount = room.ParticipantVotes.Values.Count(votes => votes.Contains(movie.Id))
+            }).OrderByDescending(x => x.VoteCount);
+
+            await Clients.Group(roomCode).SendAsync("RoomFinished", new
+            {
+                room.ParticipantVotes,
+                MovieResults = movieVotes,
+                TotalParticipants = room.ParticipantsConnectionIds.Count
+            });
+
+            _logger.LogInformation("Room {RoomCode} finished by host {ConnectionId}", 
+                roomCode, Context.ConnectionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error finishing room {RoomCode}", roomCode);
+            await Clients.Caller.SendAsync("Error", "Erro ao encerrar a sala");
+        }
     }
 }
