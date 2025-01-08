@@ -13,27 +13,8 @@ public static class ServiceCollectionExtensions
     {
         var logger = services.BuildServiceProvider().GetRequiredService<ILogger<IServiceCollection>>();
         
-        var redisUrl = configuration.GetSection("Redis").GetValue<string>("InternalUrl");
-        var redisUri = new Uri(redisUrl);
-
-        var host = redisUri.Host;
-        var port = redisUri.Port;
-        var connectionString = string.Empty;
-
-        logger.LogInformation("Configurando Redis com URI: {RedisUri}", redisUri);
-        logger.LogInformation("Host: {Host}, Port: {Port}", host, port);
-
-        if (!string.IsNullOrEmpty(redisUri.UserInfo))
-        {
-            var password = redisUri.UserInfo.Split(':')[1];
-            connectionString = $"{host}:{port},password={password},ssl=false,abortConnect=false";
-            logger.LogInformation("Redis configurado com autenticação");
-        }
-        else
-        {
-            connectionString = $"{host}:{port},ssl=false,abortConnect=false";
-            logger.LogInformation("Redis configurado sem autenticação");
-        }
+        var connectionString = configuration.GetSection("Redis").GetValue<string>("ConnectionString");
+        logger.LogInformation("Configurando Redis com ConnectionString: {ConnectionString}", connectionString);
 
         services.Configure<RedisConfig>(
             configuration.GetSection("Redis"));
@@ -45,8 +26,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IConnectionMultiplexer>(sp =>
         {
-            logger.LogInformation("Iniciando conexão com Redis: {ConnectionString}", 
-                connectionString.Replace(redisUri.UserInfo, "***")); // Oculta credenciais no log
+            logger.LogInformation("Iniciando conexão com Redis usando: {ConnectionString}", connectionString);
             return ConnectionMultiplexer.Connect(connectionString);
         });
 
