@@ -14,6 +14,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddCorsConfiguration();
 builder.Services.AddRedisConfiguration(builder.Configuration);
 builder.Services.AddSignalRConfiguration();
+builder.Services.AddServices();
 
 builder.Services.AddCustomHealthChecks(builder.Configuration);
 

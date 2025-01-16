@@ -1,4 +1,6 @@
 ﻿using MatchMovie.Configuration;
+using MatchMovie.Interfaces;
+using MatchMovie.Services;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using Microsoft.Extensions.Logging;
@@ -62,4 +64,13 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+
+    public static IServiceCollection AddServices(this IServiceCollection services)
+    {
+        services.AddScoped<IMovieAnalysisService, MovieAnalysisService>();
+
+        return services;
+    }
+    
 }

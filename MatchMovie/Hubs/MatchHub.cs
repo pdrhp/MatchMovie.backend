@@ -8,13 +8,15 @@ public class MatchHub : Hub
 {
     private readonly ILogger<MatchHub> _logger;
     private readonly IConnectionMapping _connections;
+    private readonly IMovieAnalysisService _movieAnalysisService;
 
     public MatchHub(
         ILogger<MatchHub> logger,
-        IConnectionMapping connections)
+        IConnectionMapping connections, IMovieAnalysisService movieAnalysisService)
     {
         _logger = logger;
         _connections = connections;
+        _movieAnalysisService = movieAnalysisService;
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -252,7 +254,7 @@ public class MatchHub : Hub
                 return;
             }
 
-            if (settings.RoundDurationInSeconds is < 30 or > 300)
+            if (settings.RoundDurationInSeconds is < 15 or > 300)
             {
                 await Clients.Caller.SendAsync("Error", "Duração da rodada deve ser entre 10 segundos e 200 segundos");
                 return;
@@ -330,7 +332,20 @@ public class MatchHub : Hub
                 return;
             }
 
+            room.Status = RoomStatus.LoadingFinalizedData;
+
+            await Clients.Group(roomCode).SendAsync("RoomAnalyzing", new {
+                Status = RoomStatus.LoadingFinalizedData
+            });
+
+            var summaryAnalysis =
+                await _movieAnalysisService.AnalyzeMoviesAsync(room.Movies, room.ParticipantVotes, room);
+            
+            room.AnalyzedRoom = summaryAnalysis;
+
             room.Status = RoomStatus.Finished;
+
+            
             await _connections.UpdateRoom(room);
 
             var movieVotes = room.Movies.Select(movie => new
@@ -343,7 +358,8 @@ public class MatchHub : Hub
             {
                 room.ParticipantVotes,
                 MovieResults = movieVotes,
-                TotalParticipants = room.ParticipantsConnectionIds.Count
+                TotalParticipants = room.ParticipantsConnectionIds.Count,
+                AnalyzedRoom = summaryAnalysis
             });
 
             _logger.LogInformation("Room {RoomCode} finished by host {ConnectionId}", 
