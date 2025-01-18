@@ -2,6 +2,7 @@ using MatchMovie.Controllers;
 using MatchMovie.Hubs;
 using MatchMovie.Infrastructure.Persistence.Redis;
 using MatchMovie.Interfaces;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +29,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseMetricServer();
+app.UseHttpMetrics();
+
 app.UseCors();
 app.UseRouting();
 app.UseHttpsRedirection();
