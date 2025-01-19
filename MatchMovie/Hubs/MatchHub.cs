@@ -9,14 +9,18 @@ public class MatchHub : Hub
     private readonly ILogger<MatchHub> _logger;
     private readonly IConnectionMapping _connections;
     private readonly IMovieAnalysisService _movieAnalysisService;
+    private readonly IMetricsService _metrics;
 
     public MatchHub(
         ILogger<MatchHub> logger,
-        IConnectionMapping connections, IMovieAnalysisService movieAnalysisService)
+        IConnectionMapping connections, 
+        IMovieAnalysisService movieAnalysisService,
+        IMetricsService metrics)
     {
         _logger = logger;
         _connections = connections;
         _movieAnalysisService = movieAnalysisService;
+        _metrics = metrics;
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -34,6 +38,7 @@ public class MatchHub : Hub
                     await _connections.RemoveRoom(roomCode);
                     await Clients.Group(roomCode).SendAsync("RoomClosed", "O host saiu da sala");
                     _logger.LogInformation("Room {RoomCode} closed - Host disconnected", roomCode);
+                    _metrics.RoomDeactivated();
                 }
                 else if (room.ParticipantsConnectionIds.Contains(Context.ConnectionId))
                 {
@@ -83,6 +88,8 @@ public class MatchHub : Hub
             await _connections.AddRoom(room);
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
             
+            _metrics.RoomCreated();
+            
             await Clients.Caller.SendAsync("RoomCreated", new
             {
                 room.Code,
@@ -128,6 +135,8 @@ public class MatchHub : Hub
                 room.ParticipantsConnectionIds.Add(Context.ConnectionId);
                 room.ParticipantNames[Context.ConnectionId] = userName;
                 await _connections.UpdateRoom(room);
+                
+                _metrics.ParticipantJoined();
             }
 
             await Groups.AddToGroupAsync(Context.ConnectionId, roomCode);
@@ -185,6 +194,8 @@ public class MatchHub : Hub
                 room.ParticipantVotes[Context.ConnectionId].Add(movieId);
                 await _connections.UpdateRoom(room);
                 
+                _metrics.VoteRegistered();
+                
                 await Clients.Group(roomCode).SendAsync("MovieVoted", new
                 {
                     ParticipantId = Context.ConnectionId,
@@ -222,6 +233,8 @@ public class MatchHub : Hub
 
             room.Status = RoomStatus.InProgress;
             await _connections.UpdateRoom(room);
+
+            _metrics.RoomActivated();
 
             await Clients.Group(roomCode).SendAsync("MatchingStarted", room);
             
@@ -347,6 +360,8 @@ public class MatchHub : Hub
 
             
             await _connections.UpdateRoom(room);
+
+            _metrics.RoomFinished();
 
             var movieVotes = room.Movies.Select(movie => new
             {

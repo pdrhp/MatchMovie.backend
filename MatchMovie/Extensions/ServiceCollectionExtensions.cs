@@ -69,6 +69,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddServices(this IServiceCollection services)
     {
         services.AddScoped<IMovieAnalysisService, MovieAnalysisService>();
+        services.AddScoped<IMetricsService, MetricService>();
 
         return services;
     }
